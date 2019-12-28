@@ -34,7 +34,6 @@ class ServerSession : public enable_shared_from_this<ServerSession> {
     public:
         ServerSession(ip::tcp::socket socket) : src_socket(move(socket)), dst_socket(global_io_service),
                         ftp_acceptor(global_io_service,ip::tcp::endpoint(ip::tcp::v4(), 0)) {}
-
         void start() { 
             do_request(); 
         }
@@ -66,8 +65,6 @@ class ServerSession : public enable_shared_from_this<ServerSession> {
                         sprintf(tmp_part_ip,"%u",buf[7]);
                         dst_ip_arr[3] = string(tmp_part_ip);
 
-                        cout << dst_ip_arr[0] << "|" << dst_ip_arr[1] << "|" << dst_ip_arr[2] << "|" << dst_ip_arr[3] << endl;
-                        cout << "***********************************************************" << endl;
                         char* USER_ID = (char*)buf + 8 ;
                         if (tmp_buf[1] == 1) {
                             cout << "<S_IP>: " << src_socket.remote_endpoint().address().to_string() << endl;
@@ -151,7 +148,6 @@ class ServerSession : public enable_shared_from_this<ServerSession> {
                 } else {
                     permission = 0;
                 }
-
                 if (permission) {
                     break;
                 }
@@ -200,7 +196,7 @@ class ServerSession : public enable_shared_from_this<ServerSession> {
                 buffer(src_response,length),
                 [this, self](boost::system::error_code ec, std::size_t /* length */) {
                     if (!ec){
-                        //cout<<"reply"<<endl;
+                        // pass
                     }
                 });
         }

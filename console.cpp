@@ -37,9 +37,9 @@ class Shell_session :public enable_shared_from_this<Shell_session>{
         enum{max_length = 1024};
         ip::tcp::socket _socket;
         ip::tcp::resolver src_resolver;
-        ip::tcp::resolver dest_resolver;
+        ip::tcp::resolver dst_resolver;
         ip::tcp::resolver::query src_query;
-        ip::tcp::resolver::query dest_query;
+        ip::tcp::resolver::query dst_query;
         string test_case;
         string shell_id;
         string host_id;
@@ -52,8 +52,8 @@ class Shell_session :public enable_shared_from_this<Shell_session>{
         Shell_session(string host, string port, string in_test_case, string in_shell_id, 
                         string in_host_id, string dst_ip, string dst_port) :
                         _socket(global_io_service), src_resolver(global_io_service), 
-                        dest_resolver(global_io_service), src_query(ip::tcp::v4(), host, port), 
-                        dest_query(ip::tcp::v4(), dst_ip, dst_port),test_case(in_test_case), 
+                        dst_resolver(global_io_service), src_query(ip::tcp::v4(), host, port), 
+                        dst_query(ip::tcp::v4(), dst_ip, dst_port),test_case(in_test_case), 
                         shell_id(in_shell_id), host_id(in_host_id), timer(global_io_service){}
         void start(){
             string test_file_name = "test_case/" + test_case;
@@ -65,7 +65,7 @@ class Shell_session :public enable_shared_from_this<Shell_session>{
     private:
         void do_resolve() {
             auto self(shared_from_this());
-            dest_resolver.async_resolve(dest_query, [this,self](boost::system::error_code ec,ip::tcp::resolver::iterator endpoint_iterator) {
+            dst_resolver.async_resolve(dst_query, [this,self](boost::system::error_code ec,ip::tcp::resolver::iterator endpoint_iterator) {
                 if (!ec) {
                     dest_ip = endpoint_iterator->endpoint().address().to_string();
                     dest_port = endpoint_iterator->endpoint().port();
@@ -76,7 +76,9 @@ class Shell_session :public enable_shared_from_this<Shell_session>{
                             _socket.close();
                         }
                     }); 
-                }else _socket.close();
+                } else {
+                    _socket.close();
+                }
             }); 
         }
 
@@ -92,10 +94,9 @@ class Shell_session :public enable_shared_from_this<Shell_session>{
 
         void do_send_request() {
             auto self(shared_from_this());
-            //cout<<dst_ip<<" "<<dst_port<<endl;
-            string request = "aaaaaaaaa";
+            string request = "000000000";
             smatch sm;
-            regex pattern("(.*)\\.(.*)\\.(.*)\\.(.*)");
+            regex pattern("([0-9]*).([0-9]*).([0-9]*).([0-9]*)");
             regex_search (dest_ip,sm,pattern);
             request[0] = 4;
             request[1] = 1;
@@ -119,13 +120,13 @@ class Shell_session :public enable_shared_from_this<Shell_session>{
             //cout<<"<h1>3"<<test_case<<"</h1></br>"<<endl;
             auto self(shared_from_this());
             _socket.async_read_some(
-            buffer(_data, max_length),[this, self](boost::system::error_code ec, std::size_t length) {
-                if(!ec){
-                    do_read();
-                } else {
-                    _socket.close();
-                }
-            });
+                buffer(_data, max_length),[this, self](boost::system::error_code ec, std::size_t length) {
+                    if(!ec){
+                        do_read();
+                    } else {
+                        _socket.close();
+                    }
+                });
         }
 
         void do_read() {
@@ -173,18 +174,23 @@ class client{
         string test_case;
         string shell_id;
         string host_id;
+        string socket_ip;
+        string socket_port;
+
     public:
-        client(string in_ip, string in_port, string in_test_case,int id){
+        client(string in_ip, string in_port, string in_test_case, int id, string sock_ip, string sock_port){
             ip = in_ip;
             port = in_port;
             test_case = in_test_case;
             shell_id = "s"+to_string(id);
             host_id = "h"+to_string(id);
+            socket_ip = sock_ip;
+            socket_port = sock_port;
         }
         void start(){
             string tmp = ip+":"+port;
             output_to_shell(host_id, tmp, false);
-            make_shared<Shell_session>(ip,port,test_case,shell_id,host_id)->start();
+            make_shared<Shell_session>(socket_ip, socket_port, test_case, shell_id, host_id, ip, port)->start();
         }
 };
 
@@ -196,6 +202,8 @@ int main(){
     query = "?" + query;
     smatch str_match;
     regex patterns("((?:\\?|&)\\w+=)([^&]+)");
+    regex sock_patterns("(.*)&sh=(.*)&sp=(.*)");
+
     cout << "HTTP/1.1 200 OK"<<endl;
     cout << "Content-type: text/html" << endl << endl;
     string html = 
@@ -259,7 +267,12 @@ int main(){
         </body>
         </html>)";
     cout << html;
-    int id=0;
+
+    regex_search(query, str_match, sock_patterns);
+    string sock_ip = str_match[2].str();
+    string sock_port = str_match[3].str();
+    query = str_match[1].str();
+    int id = 0;
     vector<client> clients;
     while (regex_search (query, str_match, patterns)) {
         string ip = str_match[2].str();
@@ -272,7 +285,7 @@ int main(){
         regex_search (query, str_match, patterns);
         string test_case = str_match[2].str();
         query = str_match.suffix().str();
-        client tmp(ip, port, test_case, id);
+        client tmp(ip, port, test_case, id, sock_ip, sock_port);
         clients.push_back(tmp);
         id++;
     }
