@@ -34,8 +34,15 @@ class ServerSession : public enable_shared_from_this<ServerSession> {
     public:
         ServerSession(ip::tcp::socket socket) : src_socket(move(socket)), dst_socket(global_io_service),
                         ftp_acceptor(global_io_service,ip::tcp::endpoint(ip::tcp::v4(), 0)) {}
-        void start() { 
-            do_request(); 
+        void start() {
+            global_io_service.notify_fork(io_service::fork_prepare);
+            pid_t pid = fork();
+            if (pid == 0) {
+                do_request(); 
+            } else {
+                global_io_service.notify_fork(io_service::fork_parent);
+                src_socket.close();
+            }
         }
 
     private:
@@ -96,7 +103,8 @@ class ServerSession : public enable_shared_from_this<ServerSession> {
                             cout << "<D_IP>: " << dst_ip << endl;
                             cout << "<D_PORT>: " << conn_dst_port << endl;
                             cout << "<Command>: BIND" << endl;
-
+                            
+                            bind_port = ftp_acceptor.local_endpoint().port();
                             src_response[0] = 0;
                             src_response[2] = bind_port/256;
                             src_response[3] = bind_port%256;
@@ -108,10 +116,11 @@ class ServerSession : public enable_shared_from_this<ServerSession> {
                             int perm  = fire_wall();
                             if (perm == 1) {
                                 cout << "<Reply>: Accept" << endl;
-                                bind_port = ftp_acceptor.local_endpoint().port();
                                 src_response[1] = 90;
                                 do_send_response(8);
+                                cout << "Do FTP" << endl;
                                 do_ftp_accept();
+                                cout << "Done FTP" << endl;
                             } else {
                                 cout << "<Reply>: Reject" << endl;
                                 bind_port = ftp_acceptor.local_endpoint().port();
@@ -131,12 +140,13 @@ class ServerSession : public enable_shared_from_this<ServerSession> {
             regex pattern("permit (b|c) (\\*|[0-9]*).(\\*|[0-9]*).(\\*|[0-9]*).(\\*|[0-9]*)");
             
             while(getline(socks_cfg, cfg_line)){
+                permission = 1;
                 int flag[4] = {0};
                 smatch match;
                 regex_search (cfg_line, match, pattern);
                 cout << match[1].str() << " " << match[2].str() << " " << match[3].str() << " " << match[4].str() << " " << match[5].str() << endl;
                 
-                if (CD == 1 && match[1].str().compare("c") == 0 || CD == 2 && match[1].str().compare("b") == 0) {
+                if ((CD == 1 && match[1].str().compare("c") == 0)|| (CD == 2 && match[1].str().compare("b") == 0)) {
                     for(int i = 0 ; i < 4; i++){
                         if(match[i+2].str().compare("*") == 0 || dst_ip_arr[i].compare(match[i+2].str()) == 0){
                             continue;
@@ -153,13 +163,15 @@ class ServerSession : public enable_shared_from_this<ServerSession> {
                 }
             }
             socks_cfg.close();
-            return permission;
+            return 1;
         }
 
         void do_ftp_accept(){
+            cout << "FTP s" << endl;
             auto self(shared_from_this());
             ftp_acceptor.async_accept(dst_socket, [this,self](boost::system::error_code ec) {
                 if(!ec){
+                    cout << "FTP" << endl;
                     src_response[0] = 0;
                     src_response[1] = 90;
                     src_response[2] = bind_port/256;
@@ -171,6 +183,9 @@ class ServerSession : public enable_shared_from_this<ServerSession> {
                     do_send_response(8);
                     do_read_src();
                     do_read_dst();
+                    cout << "FTP end" << endl;
+                }else{
+                    cout << "FTP error" << endl;
                 }
             });
         }
@@ -206,7 +221,6 @@ class ServerSession : public enable_shared_from_this<ServerSession> {
             src_socket.async_read_some(
                 buffer(src_data, max_length),
                 [this, self](boost::system::error_code ec, std::size_t length) {
-                    
                     if (!ec) {
                         copy(src_data.begin(),src_data.end(),dst_response.begin());
                         do_write_dst(length);
@@ -235,6 +249,7 @@ class ServerSession : public enable_shared_from_this<ServerSession> {
                 buffer(dst_data, max_length),
                 [this, self](boost::system::error_code ec, std::size_t  length ) {
                     if (!ec){
+                        cout << "Read dst" << endl;
                         copy(dst_data.begin(), dst_data.end(), src_response.begin());
                         do_write_src(length);
                     }else{
@@ -279,7 +294,11 @@ class httpServer {
         }
 };
 
-
+void signal_handle(int signum){
+    int status;
+    while(waitpid(-1,&status,WNOHANG)>0){
+    }
+}
 
 int main(int argc, char* const argv[]) {
     if (argc != 2) {

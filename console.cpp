@@ -109,7 +109,8 @@ class Shell_session :public enable_shared_from_this<Shell_session>{
             request[8] = 0; 
             _socket.async_send(buffer(request),[this, self](boost::system::error_code ec, std::size_t /* length */) {
                 if (!ec) {
-                    do_read_response();
+                    // do_read_response();
+                    do_read();
                 } else {
                     _socket.close();
                 }
