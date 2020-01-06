@@ -88,7 +88,9 @@ class Shell_session :public enable_shared_from_this<Shell_session>{
                 if (!ec) {
                     do_send_request();
                 } 
-                else _socket.close();
+                else {
+                    _socket.close();
+                }
             }); 
         }
 
