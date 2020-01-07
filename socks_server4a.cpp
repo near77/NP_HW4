@@ -240,7 +240,7 @@ class ServerSession : public enable_shared_from_this<ServerSession> {
                 }
             }
             socks_cfg.close();
-            return 1;
+            return permission;
         }
 
         void do_ftp_accept(){
